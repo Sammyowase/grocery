@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { getConnectionToken } from '@nestjs/mongoose';
+import { Connection } from 'mongoose';
 import * as request from 'supertest';
 import { AuthModule } from '../src/auth/auth.module';
 import { GroceryModule } from '../src/grocery/grocery.module';
@@ -11,9 +13,10 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 describe('Rate Limiting (e2e)', () => {
   let app: INestApplication;
+  let connection: Connection;
 
   const testUser = {
-    email: 'ratelimit@example.com',
+    email: `ratelimit-${Date.now()}@example.com`,
     password: 'password123',
     firstName: 'Rate',
     lastName: 'Limit',
@@ -27,15 +30,15 @@ describe('Rate Limiting (e2e)', () => {
           envFilePath: '.env',
         }),
         MongooseModule.forRoot(
-          process.env.MONGODB_URI 
-            ? process.env.MONGODB_URI.replace(/\/[^\/]*$/, '/grocery-delivery-test')
-            : 'mongodb://localhost:27017/grocery-delivery-test'
+          process.env.MONGODB_URI
+            ? process.env.MONGODB_URI.replace(/\/[^\/]*$/, '/grocery-delivery-rate-test')
+            : 'mongodb://localhost:27017/grocery-delivery-rate-test'
         ),
         ThrottlerModule.forRoot([
           {
             name: 'default',
-            ttl: 60000, // 1 minute
-            limit: 2, // Very low limit for testing
+            ttl: 10000, // 10 seconds for faster testing
+            limit: 3, // Low limit for testing
           },
         ]),
         AuthModule,
@@ -50,7 +53,8 @@ describe('Rate Limiting (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    
+    connection = moduleFixture.get<Connection>(getConnectionToken());
+
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -60,9 +64,19 @@ describe('Rate Limiting (e2e)', () => {
     );
 
     await app.init();
+
+    // Clean up test database before running tests
+    if (connection?.db) {
+      await connection.db.dropDatabase();
+    }
   }, 30000);
 
   afterAll(async () => {
+    // Clean up test database after running tests
+    if (connection?.db) {
+      await connection.db.dropDatabase();
+    }
+
     if (app) {
       await app.close();
     }
@@ -82,21 +96,28 @@ describe('Rate Limiting (e2e)', () => {
     });
 
     it('should block requests exceeding rate limit', async () => {
-      // Make requests to exceed the limit
+      const testEmail = `rate-test-${Date.now()}@example.com`;
+
+      // Make requests to exceed the limit (limit is 3)
       await request(app.getHttpServer())
         .post('/auth/login')
-        .send({ email: testUser.email, password: 'wrong' })
+        .send({ email: testEmail, password: 'wrong' })
         .expect(401); // First request
 
       await request(app.getHttpServer())
         .post('/auth/login')
-        .send({ email: testUser.email, password: 'wrong' })
+        .send({ email: testEmail, password: 'wrong' })
         .expect(401); // Second request
 
-      // Third request should be rate limited
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email: testEmail, password: 'wrong' })
+        .expect(401); // Third request
+
+      // Fourth request should be rate limited
       const response = await request(app.getHttpServer())
         .post('/auth/login')
-        .send({ email: testUser.email, password: 'wrong' })
+        .send({ email: testEmail, password: 'wrong' })
         .expect(429);
 
       expect(response.headers['x-ratelimit-limit']).toBeDefined();
@@ -110,7 +131,7 @@ describe('Rate Limiting (e2e)', () => {
       const response = await request(app.getHttpServer())
         .post('/auth/register')
         .send({
-          email: 'headers@example.com',
+          email: `headers-${Date.now()}@example.com`,
           password: 'password123',
           firstName: 'Headers',
           lastName: 'Test',
@@ -120,11 +141,11 @@ describe('Rate Limiting (e2e)', () => {
       expect(response.headers['x-ratelimit-limit']).toBeDefined();
       expect(response.headers['x-ratelimit-remaining']).toBeDefined();
       expect(response.headers['x-ratelimit-reset']).toBeDefined();
-      
+
       // Verify header values are reasonable
       const limit = parseInt(response.headers['x-ratelimit-limit']);
       const remaining = parseInt(response.headers['x-ratelimit-remaining']);
-      
+
       expect(limit).toBeGreaterThan(0);
       expect(remaining).toBeGreaterThanOrEqual(0);
       expect(remaining).toBeLessThanOrEqual(limit);

@@ -201,6 +201,38 @@ When rate limits are exceeded, the API returns HTTP 429 (Too Many Requests):
 3. **Cache Responses**: Cache GET responses to reduce API calls
 4. **Batch Operations**: Group multiple operations when possible
 
+### Testing Rate Limits
+
+You can test rate limiting behavior using curl:
+
+```bash
+# Test authentication rate limiting (5 requests per 15 minutes)
+for i in {1..6}; do
+  echo "Request $i:"
+  curl -X POST http://localhost:3000/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"email":"test@example.com","password":"wrong"}' \
+    -w "Status: %{http_code}\n" \
+    -s -o /dev/null
+done
+```
+
+The 6th request should return HTTP 429 (Too Many Requests).
+
+```bash
+# Test authentication rate limiting (5 requests per 15 minutes)
+for i in {1..6}; do
+  echo "Request $i:"
+  curl -X POST http://localhost:3000/auth/login \
+    -H "Content-Type: application/json" \
+    -d '{"email":"test@example.com","password":"wrong"}' \
+    -w "Status: %{http_code}\n" \
+    -s -o /dev/null
+done
+```
+
+The 6th request should return HTTP 429 (Too Many Requests).
+
 ## �📝 Usage Examples
 
 ### 1. Register a New User
@@ -253,14 +285,235 @@ curl -X PATCH http://localhost:3000/grocery/ITEM_ID \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
     "name": "Updated Banana Name",
+    "price": 7000
+  }'
+```
+
+## 📋 Complete API Endpoint Documentation
+
+### Authentication Endpoints
+
+#### Register New User
+- **Endpoint**: `POST /auth/register`
+- **Rate Limit**: 5 requests per 15 minutes
+- **Authentication**: Not required
+
+**Request:**
+```bash
+curl -X POST http://localhost:3000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "john.doe@example.com",
+    "password": "password123",
+    "firstName": "John",
+    "lastName": "Doe"
+  }'
+```
+
+**Response (201 Created):**
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "507f1f77bcf86cd799439011",
+    "email": "samuelowase@example.com",
+    "firstName": "Samuel",
+    "lastName": "Owase"
+  }
+}
+```
+
+**Headers:**
+```
+X-RateLimit-Limit: 5
+X-RateLimit-Remaining: 4
+X-RateLimit-Reset: 2023-12-01T10:15:00.000Z
+```
+
+#### User Login
+- **Endpoint**: `POST /auth/login`
+- **Rate Limit**: 5 requests per 15 minutes
+- **Authentication**: Not required
+
+**Request:**
+```bash
+curl -X POST http://localhost:3000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "samuelowase@example.com",
+    "password": "password123"
+  }'
+```
+
+**Response (200 OK):**
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "507f1f77bcf86cd799439011",
+    "email": "samulowasee@example.com",
+    "firstName": "Samuel",
+    "lastName": "Owase"
+  }
+}
+```
+
+### Grocery Management Endpoints
+
+#### Add Grocery Item
+- **Endpoint**: `POST /grocery`
+- **Rate Limit**: 50 requests per 15 minutes
+- **Authentication**: Required (JWT Bearer token)
+
+**Request:**
+```bash
+curl -X POST http://localhost:3000/grocery \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "name": "Organic Bananas",
+    "description": "Fresh organic bananas from local farms",
+    "price": 2.99,
+    "quantity": 5,
+    "category": "Fruits",
+    "imageUrl": "https://example.com/images/bananas.jpg"
+  }'
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": "507f1f77bcf86cd799439012",
+  "name": "Organic Bananas",
+  "description": "Fresh organic bananas from local farms",
+  "price": 2.99,
+  "quantity": 5,
+  "category": "Fruits",
+  "imageUrl": "https://example.com/images/bananas.jpg",
+  "userId": "507f1f77bcf86cd799439011",
+  "isAvailable": true,
+  "createdAt": "2023-12-01T10:00:00.000Z",
+  "updatedAt": "2023-12-01T10:00:00.000Z"
+}
+```
+
+#### Get All Grocery Items
+- **Endpoint**: `GET /grocery`
+- **Rate Limit**: 200 requests per 15 minutes
+- **Authentication**: Required (JWT Bearer token)
+
+**Request:**
+```bash
+curl -X GET http://localhost:3000/grocery \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+**Response (200 OK):**
+```json
+[
+  {
+    "id": "507f1f77bcf86cd799439012",
+    "name": "Organic Bananas",
+    "description": "Fresh organic bananas from local farms",
+    "price": 2.99,
+    "quantity": 5,
+    "category": "Fruits",
+    "imageUrl": "https://example.com/images/bananas.jpg",
+    "userId": "507f1f77bcf86cd799439011",
+    "isAvailable": true,
+    "createdAt": "2023-12-01T10:00:00.000Z",
+    "updatedAt": "2023-12-01T10:00:00.000Z"
+  }
+]
+```
+
+#### Update Grocery Item
+- **Endpoint**: `PATCH /grocery/:id`
+- **Rate Limit**: 50 requests per 15 minutes
+- **Authentication**: Required (JWT Bearer token)
+
+**Request:**
+```bash
+curl -X PATCH http://localhost:3000/grocery/507f1f77bcf86cd799439012 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "name": "Premium Organic Bananas",
     "price": 3.99
   }'
 ```
 
-### 6. Delete Grocery Item
+**Response (200 OK):**
+```json
+{
+  "id": "507f1f77bcf86cd799439012",
+  "name": "Premium Organic Bananas",
+  "description": "Fresh organic bananas from local farms",
+  "price": 3.99,
+  "quantity": 5,
+  "category": "Fruits",
+  "imageUrl": "https://example.com/images/bananas.jpg",
+  "userId": "507f1f77bcf86cd799439011",
+  "isAvailable": true,
+  "createdAt": "2023-12-01T10:00:00.000Z",
+  "updatedAt": "2023-12-01T10:05:00.000Z"
+}
+```
+
+#### Delete Grocery Item
+- **Endpoint**: `DELETE /grocery/:id`
+- **Rate Limit**: 50 requests per 15 minutes
+- **Authentication**: Required (JWT Bearer token)
+
+**Request:**
 ```bash
-curl -X DELETE http://localhost:3000/grocery/ITEM_ID \
+curl -X DELETE http://localhost:3000/grocery/507f1f77bcf86cd799439012 \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+**Response (204 No Content):**
+```
+(Empty response body)
+```
+
+### Error Responses
+
+#### Rate Limit Exceeded (429)
+```json
+{
+  "statusCode": 429,
+  "message": "Too Many Requests",
+  "error": "ThrottlerException"
+}
+```
+
+#### Unauthorized (401)
+```json
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+#### Validation Error (400)
+```json
+{
+  "statusCode": 400,
+  "message": [
+    "email must be an email",
+    "password must be longer than or equal to 6 characters"
+  ],
+  "error": "Bad Request"
+}
+```
+
+#### Not Found (404)
+```json
+{
+  "statusCode": 404,
+  "message": "Grocery item not found",
+  "error": "Not Found"
+}
 ```
 
 ## 🏗️ Project Structure
@@ -291,6 +544,7 @@ src/
 
 ## 🔧 Environment Variables
 
+### Core Application Settings
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | Application port | `3000` |
@@ -298,6 +552,42 @@ src/
 | `JWT_SECRET` | JWT signing secret | `your-super-secret-jwt-key-change-this-in-production` |
 | `JWT_EXPIRES_IN` | JWT token expiration time | `24h` |
 | `NODE_ENV` | Environment mode | `development` |
+
+### Rate Limiting Configuration
+| Variable | Description | Default | Purpose |
+|----------|-------------|---------|---------|
+| `THROTTLE_TTL` | Global rate limit time window (ms) | `900000` (15 min) | Overall API protection |
+| `THROTTLE_LIMIT` | Global rate limit requests | `100` | Maximum requests per window |
+| `THROTTLE_AUTH_TTL` | Auth endpoints time window (ms) | `900000` (15 min) | Prevent brute force attacks |
+| `THROTTLE_AUTH_LIMIT` | Auth endpoints requests | `5` | Login/register attempts |
+| `THROTTLE_GROCERY_TTL` | Grocery CRUD time window (ms) | `900000` (15 min) | Standard operations |
+| `THROTTLE_GROCERY_LIMIT` | Grocery CRUD requests | `50` | Create/update/delete operations |
+| `THROTTLE_READ_TTL` | Read operations time window (ms) | `900000` (15 min) | Data retrieval |
+| `THROTTLE_READ_LIMIT` | Read operations requests | `200` | GET requests |
+
+### Example .env Configuration
+```env
+# Application Configuration
+PORT=3000
+NODE_ENV=development
+
+# Database Configuration
+MONGODB_URI=mongodb://localhost:27017/grocery-delivery
+
+# JWT Configuration
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+JWT_EXPIRES_IN=24h
+
+# Rate Limiting Configuration
+THROTTLE_TTL=900000
+THROTTLE_LIMIT=100
+THROTTLE_AUTH_TTL=900000
+THROTTLE_AUTH_LIMIT=5
+THROTTLE_GROCERY_TTL=900000
+THROTTLE_GROCERY_LIMIT=50
+THROTTLE_READ_TTL=900000
+THROTTLE_READ_LIMIT=200
+```
 
 ## 🚀 Deployment
 

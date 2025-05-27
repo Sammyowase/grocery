@@ -1,5 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { getConnectionToken } from '@nestjs/mongoose';
+import { Connection } from 'mongoose';
 import * as request from 'supertest';
 import { TestAppModule } from './test-app.module';
 
@@ -7,9 +9,10 @@ describe('Grocery API (e2e)', () => {
   let app: INestApplication;
   let authToken: string;
   let groceryItemId: string;
+  let connection: Connection;
 
   const testUser = {
-    email: 'test@example.com',
+    email: `test-${Date.now()}@example.com`, // Unique email for each test run
     password: 'password123',
     firstName: 'Test',
     lastName: 'User',
@@ -29,6 +32,7 @@ describe('Grocery API (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    connection = moduleFixture.get<Connection>(getConnectionToken());
 
     // Apply the same validation pipe as in main.ts
     app.useGlobalPipes(
@@ -40,9 +44,19 @@ describe('Grocery API (e2e)', () => {
     );
 
     await app.init();
+
+    // Clean up test database before running tests
+    if (connection.db) {
+      await connection.db.dropDatabase();
+    }
   }, 30000); // Increase timeout to 30 seconds
 
   afterAll(async () => {
+    // Clean up test database after running tests
+    if (connection?.db) {
+      await connection.db.dropDatabase();
+    }
+
     if (app) {
       await app.close();
     }
